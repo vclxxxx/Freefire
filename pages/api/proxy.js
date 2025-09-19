@@ -1,55 +1,40 @@
 export default async function handler(req, res) {
   const { url } = req.query
-  if (!url) {
-    res.status(400).json({ error: 'Missing url param' })
-    return
-  }
+  if (!url) return res.status(400).json({ error: 'Missing url param' })
 
   let decoded
   try {
     decoded = decodeURIComponent(url)
-  } catch (e) {
+  } catch {
     decoded = url
   }
 
   const allowedHosts = ['raw.thug4ff.com', 'profile.thug4ff.com']
-
   try {
     const target = new URL(decoded)
     if (!allowedHosts.includes(target.hostname)) {
-      res.status(403).json({ error: 'Host not allowed' })
-      return
+      return res.status(403).json({ error: 'Host not allowed' })
     }
 
-    const fetchRes = await fetch(target.toString(), {
-      method: 'GET',
-      headers: {
-        accept: '*/*',
-        'user-agent': 'ff-check-vercel-proxy/1.0',
-      },
-    })
+    const fetchRes = await fetch(target.toString(), { method: 'GET' })
+    const ct = fetchRes.headers.get('content-type') || 'application/octet-stream'
 
-    const contentType = fetchRes.headers.get('content-type') || 'application/octet-stream'
-    const status = fetchRes.status
+    res.setHeader('Content-Type', ct)
+    res.status(fetchRes.status)
 
-    // Trả lại y nguyên dữ liệu
-    res.setHeader('Content-Type', contentType)
-    res.status(status)
-
-    if (contentType.startsWith('image/')) {
+    if (ct.startsWith('image/')) {
       const buffer = Buffer.from(await fetchRes.arrayBuffer())
-      res.send(buffer)
+      return res.send(buffer)
     } else {
       const text = await fetchRes.text()
       try {
-        const json = JSON.parse(text)
-        res.json(json)
+        return res.json(JSON.parse(text))
       } catch {
-        res.send(text)
+        return res.send(text)
       }
     }
   } catch (err) {
-    console.error('Proxy error', err)
-    res.status(500).json({ error: 'Proxy failed', detail: String(err.message) })
+    console.error('Proxy error:', err)
+    return res.status(500).json({ error: 'Proxy failed', detail: err.message })
   }
 }
